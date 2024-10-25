@@ -1,0 +1,214 @@
+<!doctype html>
+<!-- A very simple web front end. -->
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Chat</title>
+
+        <!-- Favicon -->
+        <link
+            rel="icon"
+            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>텀</text></svg>"
+        />
+
+        <!-- Pico https://picocss.com -->
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"
+        />
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.colors.min.css"
+        />
+
+        <style>
+            h1 span {
+                font-family: cursive;
+                font-size: 2.5rem;
+                color: #ca9ee6;
+            }
+            a {
+                color: #ca9ee6;
+            }
+            ul {
+                li {
+                    list-style-type: none;
+                    margin-bottom: 2rem;
+                    display: flex;
+
+                    div {
+                        padding: 0.75rem;
+                    }
+
+                    &.user {
+                        justify-content: end;
+                        div {
+                            background-color: var(--pico-color-zinc-800);
+                            border-radius: var(--pico-border-radius);
+                        }
+                    }
+
+                    &.assistant {
+                        .icon {
+                            display: flex; /* Use flexbox for centering */
+                            justify-content: center; /* Center horizontally */
+                            align-items: center;
+                            width: 3rem;
+                            height: 3rem;
+                            font-size: 3rem;
+                            transition: opacity 1.5s ease-in-out;
+                            animation: float 6s ease-in-out infinite;
+                        }
+                    }
+                    &:not(:last-of-type) {
+                        .icon {
+                            opacity: 0%;
+                        }
+                    }
+                }
+            }
+
+            .flipped {
+                transform: rotate(180deg);
+            }
+
+            .invisible {
+                opacity: 0;
+            }
+
+            #resetForm {
+                display: inline-block;
+                button {
+                    background-color: initial;
+                    border: none;
+                }
+            }
+
+            @keyframes float {
+                0% {
+                    transform: translateY(0px);
+                }
+                50% {
+                    transform: translateY(-20px);
+                }
+                100% {
+                    transform: translateY(0px);
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <main
+            style="display: flex; flex-direction: column; min-height: 100vh"
+            class="container"
+        >
+            <header>
+                <h1>
+                    <span aria-hidden="true">텀</span>
+                    Chat
+                </h1>
+            </header>
+
+            <!-- chat history -->
+            <div style="flex: 1">
+                <ul></ul>
+            </div>
+
+            <!-- user input -->
+            <form style="display: flex; gap: 1rem">
+                <input
+                    autocomplete="off"
+                    style="flex: 1"
+                    name="query"
+                    placeholder="say something"
+                />
+                <button style="width: revert" type="submit">⇧</button>
+            </form>
+
+            <footer>
+                <a href="https://tomontheinternet.com">made by tom</a>
+                <form action="/reset" method="POST" id="resetForm">
+                    <button>(reset)</button>
+                </form>
+            </footer>
+        </main>
+    </body>
+
+    <script>
+        // I can get away with these simple selectors because this app is tiny.
+        let messageList = document.querySelector("ul")
+        let input = document.querySelector("input")
+        let submitButton = document.querySelector('button[type="submit"]')
+        let footer = document.querySelector("footer")
+        let form = document.querySelector("form")
+
+        form.addEventListener("submit", async function (event) {
+            // stop the browser from making a POST request
+            event.preventDefault()
+
+            let formData = new FormData(form)
+            let message = formData.get("query")?.trim()
+
+            if (!message) {
+                input.value = ""
+                input.focus()
+                return
+            }
+
+            // add user's chat message
+            let item = document.createElement("li")
+            item.classList.add("user")
+
+            let userDiv = document.createElement("div")
+            userDiv.innerText = message
+            item.append(userDiv)
+            messageList.append(item)
+
+            // put the form in loading state while we
+            // wait for the assistant's response
+            input.placeholder = ""
+            form.reset()
+            form.inert = true
+            submitButton.classList.add("flipped")
+
+            let response = await fetch("/conversation", {
+                method: "POST",
+                body: JSON.stringify({ message }),
+            })
+
+            // add assistant's chat message
+            item = document.createElement("li")
+            item.classList.add("assistant")
+            messageList.append(item)
+
+            let icon = document.createElement("div")
+            icon.innerText = "🫥"
+            icon.classList.add("icon")
+            icon.classList.add("invisible")
+            item.append(icon)
+            setTimeout(() => {
+                icon.classList.remove("invisible")
+            })
+
+            let assistantDiv = document.createElement("div")
+            item.append(assistantDiv)
+            footer.scrollIntoView({ behavior: "smooth", block: "end" })
+
+            let eventSource = new EventSource(`/conversation`)
+            eventSource.addEventListener("message", (e) => {
+                let data = JSON.parse(e.data)
+                assistantDiv.innerText = data.message
+                footer.scrollIntoView({ behavior: "smooth", block: "end" })
+
+                if (data.complete) {
+                    eventSource.close()
+                    input.placeholder = "say something"
+                    form.inert = false
+                    submitButton.classList.remove("flipped")
+                    input.focus()
+                }
+            })
+        })
+    </script>
+</html>
